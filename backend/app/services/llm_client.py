@@ -451,9 +451,10 @@ class OpenAICompatibleClient(LLMClient):
                         if chunk.is_finished:
                             break
 
-                        if chunk.content and on_chunk:
-                            await on_chunk(chunk.content)
+                        if chunk.content:
                             full_content += chunk.content
+                            if on_chunk:
+                                await on_chunk(chunk.content)
 
                         if chunk.reasoning_content:
                             full_reasoning += chunk.reasoning_content
