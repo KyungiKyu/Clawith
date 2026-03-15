@@ -301,6 +301,10 @@ async def _process_telegram_message(agent_id: uuid.UUID, sender_id: int, display
                 _text_str = str(reply_text)
                 chunks = [_text_str[i:i+limit] for i in range(0, len(_text_str), limit)]
                 for chunk in chunks:
-                    await client.post(tg_send_url, json={"chat_id": chat_id, "text": chunk})
+                    payload = {"chat_id": chat_id, "text": chunk, "parse_mode": "Markdown"}
+                    resp = await client.post(tg_send_url, json=payload)
+                    if resp.status_code != 200:
+                        # Markdown parse error (e.g. unbalanced `` or *) — retry as plain text
+                        await client.post(tg_send_url, json={"chat_id": chat_id, "text": chunk})
         except Exception as e:
             logger.error(f"[Telegram] Failed to send reply: {e}")
