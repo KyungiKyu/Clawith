@@ -62,8 +62,9 @@ async def configure_telegram_channel(
             resp.raise_for_status()
             logger.info(f"[Telegram] Webhook registered for agent {agent_id}: {resp.json()}")
     except Exception as e:
-        logger.error(f"[Telegram] Failed to register webhook: {e}")
-        raise HTTPException(status_code=400, detail=f"Failed to register webhook with Telegram: {str(e)}")
+        logger.error(f"[Telegram] Warning: Failed to register webhook: {e}")
+        # We do not raise HTTPException here to allow saving the bot token 
+        # even if the environment doesn't have a valid HTTPS public URL yet.
 
     result = await db.execute(
         select(ChannelConfig).where(
@@ -278,7 +279,8 @@ async def _process_telegram_message(agent_id: uuid.UUID, sender_id: int, display
             async with httpx.AsyncClient(timeout=15) as client:
                 # Telegram limits messages to 4096 chars, chunk if necessary
                 limit = 4050
-                chunks = [reply_text[i:i+limit] for i in range(0, len(reply_text), limit)]
+                _text_str = str(reply_text)
+                chunks = [_text_str[i:i+limit] for i in range(0, len(_text_str), limit)]
                 for chunk in chunks:
                     await client.post(tg_send_url, json={"chat_id": chat_id, "text": chunk})
         except Exception as e:
