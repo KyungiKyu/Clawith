@@ -651,6 +651,14 @@
       "tenantId": "租户 ID（目录 ID）",
       "tenantIdPlaceholder": "请输入此单租户应用的租户 ID（目录 ID）",
       "tenantIdHint": "单租户应用必填，请在 Azure AD → 应用注册 → 你的应用 → 概述 中复制目录（租户）ID。"
+    },
+    "telegram": {
+      "step1": "打开 Telegram 并搜索 @BotFather，开始与他对话。",
+      "step2": "发送命令 /newbot，并按照他的提示为您的机器人设置名称和用户名。",
+      "step3": "创建完成后，@BotFather 会给您一个 Token（如：123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11）。",
+      "step4": "将此 Token 粘贴到上方的 Bot Token 输入框中并点击确认保存，Webhook 会自动注册完成。",
+      "step5": "在 Telegram 中开启与刚创建的机器人的对话并进行测试。",
+      "note": "您的服务器必须具备可通过外部 HTTPS 访问的公网地址才能接收 Telegram 的 Webhook 回调消息。"
     }
   }
 }

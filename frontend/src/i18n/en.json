@@ -638,6 +638,14 @@
       "tenantId": "Tenant ID (Directory ID)",
       "tenantIdPlaceholder": "Enter your tenant ID (Directory ID) for this single-tenant app",
       "tenantIdHint": "Required for single-tenant apps. Get it from Azure AD → App registrations → your app → Overview."
+    },
+    "telegram": {
+      "step1": "Open Telegram and search for @BotFather. Start a conversation with him.",
+      "step2": "Send the command /newbot and follow his instructions to choose a name and username for your bot.",
+      "step3": "Once created, @BotFather will give you a token (e.g., 123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11).",
+      "step4": "Paste this token into the Bot Token field above and click Save Config. The webhook will be automatically registered.",
+      "step5": "Start a chat with your newly created bot in Telegram to test it.",
+      "note": "Your server must be publicly reachable (with HTTPS) for Telegram webhooks to work."
     }
   }
 }

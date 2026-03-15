@@ -38,11 +38,13 @@ export default function AgentCreate() {
         discord_application_id: '',
         discord_bot_token: '',
         discord_public_key: '',
+        telegram_bot_token: '',
         skill_ids: [] as string[],
     });
     const [feishuOpen, setFeishuOpen] = useState(false);
     const [slackOpen, setSlackOpen] = useState(false);
     const [discordOpen, setDiscordOpen] = useState(false);
+    const [telegramOpen, setTelegramOpen] = useState(false);
 
     // Fetch LLM models for step 1
     const { data: models = [] } = useQuery({
@@ -779,6 +781,49 @@ Body: {"message_id": "<id>", "result": "<response>"}
                                             <input className="form-input" value={form.feishu_encrypt_key}
                                                 onChange={(e) => setForm({ ...form, feishu_encrypt_key: e.target.value })}
                                                 placeholder={t('wizard.step5.encryptKeyPlaceholder')} />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Telegram — expandable */}
+                            <div style={{ border: '1px solid var(--border-default)', borderRadius: '8px', overflow: 'hidden' }}>
+                                <div
+                                    onClick={() => setTelegramOpen(!telegramOpen)}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '12px', padding: '14px',
+                                        cursor: 'pointer', background: telegramOpen ? 'var(--accent-subtle)' : 'var(--bg-elevated)',
+                                        borderBottom: telegramOpen ? '1px solid var(--border-default)' : 'none',
+                                    }}
+                                >
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="#24A1DE"><path d="M11.944 0A12 12 0 000 12a12 12 0 0012 12 12 12 0 0012-12A12 12 0 0012 0a12 12 0 00-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 01.171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{ fontWeight: 500, fontSize: '13px' }}>Telegram</div>
+                                        <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Telegram Bot</div>
+                                    </div>
+                                    {form.telegram_bot_token && <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '10px', background: 'rgba(16,185,129,0.15)', color: 'rgb(16,185,129)', fontWeight: 500 }}>Configured</span>}
+                                    <span style={{ fontSize: '12px', color: 'var(--text-tertiary)', transition: 'transform 0.2s', transform: telegramOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
+                                </div>
+                                {telegramOpen && (
+                                    <div style={{ padding: '16px' }}>
+                                        <details style={{ marginBottom: '8px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                            <summary style={{ cursor: 'pointer', fontWeight: 500, color: 'var(--text-primary)', userSelect: 'none', listStyle: 'none', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <span style={{ fontSize: '10px' }}>▶</span> {t('channelGuide.setupGuide')}
+                                            </summary>
+                                            <ol style={{ paddingLeft: '16px', margin: '8px 0', lineHeight: 1.9 }}>
+                                                <li>{t('channelGuide.telegram.step1')}</li>
+                                                <li>{t('channelGuide.telegram.step2')}</li>
+                                                <li>{t('channelGuide.telegram.step3')}</li>
+                                                <li>{t('channelGuide.telegram.step4')}</li>
+                                                <li>{t('channelGuide.telegram.step5')}</li>
+                                            </ol>
+                                            <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', background: 'var(--bg-secondary)', padding: '6px 10px', borderRadius: '6px' }}>💡 {t('channelGuide.telegram.note')}</div>
+                                        </details>
+                                        <div className="form-group">
+                                            <label className="form-label">Bot Token</label>
+                                            <input className="form-input" type="password" value={form.telegram_bot_token}
+                                                onChange={(e) => setForm({ ...form, telegram_bot_token: e.target.value })}
+                                                placeholder="123456:ABC-DEF..." />
                                         </div>
                                     </div>
                                 )}
