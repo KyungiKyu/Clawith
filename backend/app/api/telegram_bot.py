@@ -254,7 +254,9 @@ async def _process_telegram_message(agent_id: uuid.UUID, sender_id: int, display
         )
         history = [{"role": m.role, "content": m.content} for m in reversed(history_r.scalars().all())]
 
-        # Save user message
+        # Save user message and commit BEFORE calling LLM.
+        # _call_agent_llm internally opens its own async_session() calls,
+        # so we must not hold an open transaction at the same time.
         bg_db.add(ChatMessage(agent_id=agent_id, user_id=platform_user_id, role="user", content=user_text, conversation_id=session_conv_id))
         sess.last_message_at = datetime.now(timezone.utc)
         await bg_db.commit()
@@ -267,13 +269,15 @@ async def _process_telegram_message(agent_id: uuid.UUID, sender_id: int, display
         except Exception:
             pass
 
-        # Call LLM
-        reply_text = await _call_agent_llm(bg_db, agent_id, user_text, history=history)
+        # Call LLM — use a fresh session to avoid conflicts with call_llm's internal sessions
+        from app.database import async_session as _async_session
+        async with _async_session() as llm_db:
+            reply_text = await _call_agent_llm(llm_db, agent_id, user_text, history=history, user_id=platform_user_id)
 
         # Save reply
-        bg_db.add(ChatMessage(agent_id=agent_id, user_id=platform_user_id, role="assistant", content=reply_text, conversation_id=session_conv_id))
-        sess.last_message_at = datetime.now(timezone.utc)
-        await bg_db.commit()
+        async with _async_session() as save_db:
+            save_db.add(ChatMessage(agent_id=agent_id, user_id=platform_user_id, role="assistant", content=reply_text, conversation_id=session_conv_id))
+            await save_db.commit()
 
         # Send reply
         tg_send_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
