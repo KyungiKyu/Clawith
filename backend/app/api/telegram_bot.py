@@ -270,19 +270,15 @@ async def _process_telegram_message(
         sess.last_message_at = datetime.now(timezone.utc)
         await bg_db.commit()
 
-        # Build LLM prompt — inject Telegram channel context so the agent
-        # knows it is in a Telegram conversation, not on the web UI.
-        llm_text = (
-            f"[System: You are responding via Telegram to user '{display_name}'. "
-            f"Keep replies concise and Telegram-friendly. "
-            f"You may use *bold*, _italic_, and `code` Markdown.]\n"
-            f"{user_text}"
+        # Build LLM prompt — inject minimal Telegram channel context.
+        # When there is an image, user_text already contains [image_data:base64...]
+        # from the poller. Do NOT add a file-path tool hint — that confuses the
+        # model into calling read_document instead of using its vision capability.
+        channel_ctx = (
+            f"[System: Responding via Telegram to '{display_name}'. "
+            f"Use Telegram Markdown (*bold*, _italic_, `code`) and keep replies concise.]"
         )
-        if image_path:
-            llm_text += (
-                f"\n\n[System: The user sent an image saved at workspace path `{image_path}`. "
-                f"Please call read_document or list_files to inspect it if needed.]"
-            )
+        llm_text = channel_ctx + "\n" + user_text
 
         # Mark thinking (Typing action in Telegram)
         tg_action_url = f"https://api.telegram.org/bot{bot_token}/sendChatAction"
@@ -294,7 +290,7 @@ async def _process_telegram_message(
 
         # Call LLM — use a fresh session to avoid conflicts with call_llm's internal sessions
         from app.database import async_session as _async_session
-        logger.info(f"[Telegram] Calling LLM for agent {agent_id}, user_text={llm_text[:60]!r}, history_len={len(history)}")
+        logger.info(f"[Telegram] Calling LLM for agent {agent_id}, has_image={image_path is not None}, text_len={len(llm_text)}")
         async with _async_session() as llm_db:
             reply_text = await _call_agent_llm(llm_db, agent_id, llm_text, history=history, user_id=platform_user_id)
         logger.info(f"[Telegram] LLM reply ({len(reply_text)} chars): {reply_text[:100]!r}")
