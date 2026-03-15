@@ -213,6 +213,12 @@ class OpenAICompatibleClient(LLMClient):
         self.supports_tool_choice = supports_tool_choice
         self._client: httpx.AsyncClient | None = None
 
+    @property
+    def is_ollama(self) -> bool:
+        """Detect if this is an Ollama backend (local or cloud)."""
+        url = (self.base_url or "").lower()
+        return "ollama" in url or ":11434" in url
+
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client."""
         if self._client is None or self._client.is_closed:
@@ -242,14 +248,21 @@ class OpenAICompatibleClient(LLMClient):
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Build request payload."""
+        # Convert messages to API format, handling Ollama's different vision format
+        if self.is_ollama:
+            api_messages = [self._to_ollama_format(m) for m in messages]
+        else:
+            api_messages = [m.to_openai_format() for m in messages]
+
         payload: dict[str, Any] = {
             "model": self.model,
-            "messages": [m.to_openai_format() for m in messages],
+            "messages": api_messages,
             "temperature": temperature,
             "stream": stream,
         }
 
         # Request usage stats in streaming responses (OpenAI extension)
+        # Ollama supports this too
         if stream:
             payload["stream_options"] = {"include_usage": True}
 
@@ -266,6 +279,42 @@ class OpenAICompatibleClient(LLMClient):
         payload.update(kwargs)
 
         return payload
+
+    def _to_ollama_format(self, msg: LLMMessage) -> dict[str, Any]:
+        """Convert LLMMessage to Ollama API format.
+
+        Ollama vision format uses 'images': [base64str, ...] alongside
+        a plain text 'content', unlike OpenAI's content-array format.
+        """
+        import re as _re
+        base = msg.to_openai_format()
+        content = base.get("content")
+
+        if not isinstance(content, list):
+            # Plain text message — no conversion needed
+            return base
+
+        # content is a list of parts (vision format)
+        text_parts = []
+        image_b64_list = []
+        for part in content:
+            if isinstance(part, dict):
+                if part.get("type") == "text":
+                    text_parts.append(part.get("text", ""))
+                elif part.get("type") == "image_url":
+                    url = part.get("image_url", {}).get("url", "")
+                    # Strip the data URL prefix: data:image/jpeg;base64,<data>
+                    m = _re.match(r'data:image/[^;]+;base64,(.+)', url)
+                    if m:
+                        image_b64_list.append(m.group(1))
+
+        ollama_msg: dict[str, Any] = {
+            "role": base["role"],
+            "content": " ".join(text_parts),
+        }
+        if image_b64_list:
+            ollama_msg["images"] = image_b64_list
+        return ollama_msg
 
     def _parse_stream_line(
         self,
