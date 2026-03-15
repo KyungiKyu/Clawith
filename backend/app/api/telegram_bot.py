@@ -77,7 +77,11 @@ async def configure_telegram_channel(
         existing.app_secret = bot_token
         existing.is_configured = True
         await db.flush()
-        return ChannelConfigOut.model_validate(existing)
+        out = ChannelConfigOut.model_validate(existing)
+        # (Re)start long-polling for this agent so messages work immediately
+        from app.services.telegram_poller import start_polling_for_agent
+        start_polling_for_agent(agent_id, bot_token)
+        return out
 
     config = ChannelConfig(
         agent_id=agent_id,
@@ -87,7 +91,10 @@ async def configure_telegram_channel(
     )
     db.add(config)
     await db.flush()
-    return ChannelConfigOut.model_validate(config)
+    out = ChannelConfigOut.model_validate(config)
+    from app.services.telegram_poller import start_polling_for_agent
+    start_polling_for_agent(agent_id, bot_token)
+    return out
 
 
 @router.get("/agents/{agent_id}/telegram-channel", response_model=ChannelConfigOut)
@@ -128,14 +135,9 @@ async def delete_telegram_channel(
     if not config:
         raise HTTPException(status_code=404, detail="Telegram not configured")
 
-    bot_token = config.app_secret
-    if bot_token:
-        tg_api_url = f"https://api.telegram.org/bot{bot_token}/deleteWebhook"
-        try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                await client.post(tg_api_url)
-        except Exception as e:
-            logger.warning(f"[Telegram] Failed to delete webhook on removal: {e}")
+    # Stop the long-poller for this agent
+    from app.services.telegram_poller import stop_polling_for_agent
+    stop_polling_for_agent(agent_id)
 
     await db.delete(config)
 

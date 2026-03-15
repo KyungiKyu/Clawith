@@ -166,9 +166,11 @@ async def lifespan(app: FastAPI):
                 import traceback
                 traceback.print_exception(type(exc), exc, exc.__traceback__)
 
+        from app.services.telegram_poller import start_all_pollers
         for name, coro in [
             ("trigger_daemon", start_trigger_daemon()),
             ("feishu_ws", feishu_ws_manager.start_all()),
+            ("telegram_poller", start_all_pollers()),
         ]:
             task = asyncio.create_task(coro, name=name)
             task.add_done_callback(_bg_task_error)
