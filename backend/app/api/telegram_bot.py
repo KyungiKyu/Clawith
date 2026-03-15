@@ -245,10 +245,15 @@ async def _process_telegram_message(agent_id: uuid.UUID, sender_id: int, display
         )
         session_conv_id = str(sess.id)
 
-        # Load history
+        # Load history — only user/assistant messages; skip tool_call/tool records
+        # that the websocket saves, as those roles are not valid in the channel LLM path.
         history_r = await bg_db.execute(
             select(ChatMessage)
-            .where(ChatMessage.agent_id == agent_id, ChatMessage.conversation_id == session_conv_id)
+            .where(
+                ChatMessage.agent_id == agent_id,
+                ChatMessage.conversation_id == session_conv_id,
+                ChatMessage.role.in_(["user", "assistant"]),
+            )
             .order_by(ChatMessage.created_at.desc())
             .limit(ctx_size)
         )
@@ -271,8 +276,16 @@ async def _process_telegram_message(agent_id: uuid.UUID, sender_id: int, display
 
         # Call LLM — use a fresh session to avoid conflicts with call_llm's internal sessions
         from app.database import async_session as _async_session
+        logger.info(f"[Telegram] Calling LLM for agent {agent_id}, user_text={user_text[:60]!r}, history_len={len(history)}")
         async with _async_session() as llm_db:
             reply_text = await _call_agent_llm(llm_db, agent_id, user_text, history=history, user_id=platform_user_id)
+        logger.info(f"[Telegram] LLM reply ({len(reply_text)} chars): {reply_text[:100]!r}")
+        if not reply_text or reply_text == "[LLM returned empty content]":
+            # Retry once without history in case history was the problem
+            logger.warning(f"[Telegram] Empty reply, retrying without history...")
+            async with _async_session() as llm_db2:
+                reply_text = await _call_agent_llm(llm_db2, agent_id, user_text, history=[], user_id=platform_user_id)
+            logger.info(f"[Telegram] Retry reply ({len(reply_text)} chars): {reply_text[:100]!r}")
 
         # Save reply
         async with _async_session() as save_db:
