@@ -126,13 +126,9 @@ async def _poll_loop(agent_id: uuid.UUID, bot_token: str) -> None:
 
 
 async def _handle_update(agent_id: uuid.UUID, bot_token: str, update: dict) -> None:
-    """Process a single Telegram update."""
+    """Process a single Telegram update (text or photo)."""
     msg_obj = update.get("message")
     if not msg_obj:
-        return
-
-    text = msg_obj.get("text", "").strip()
-    if not text:
         return
 
     chat_id = msg_obj.get("chat", {}).get("id")
@@ -144,9 +140,65 @@ async def _handle_update(agent_id: uuid.UUID, bot_token: str, update: dict) -> N
     sender_first = msg_obj.get("from", {}).get("first_name", "")
     sender_last = msg_obj.get("from", {}).get("last_name", "")
     display_name = sender_username or f"{sender_first} {sender_last}".strip() or f"TG User {sender_id}"
-
     conv_id = f"telegram_{chat_id}"
+
+    text = msg_obj.get("text", "").strip()
+    caption = msg_obj.get("caption", "").strip()  # caption on photos/files
+    photos = msg_obj.get("photo")  # list of PhotoSize objects, largest last
+    image_path: str | None = None
+
+    # ── Photo handling ────────────────────────────────────────────────────────
+    if photos:
+        # Pick the highest-resolution version
+        best = max(photos, key=lambda p: p.get("file_size", 0))
+        file_id = best.get("file_id")
+        try:
+            async with httpx.AsyncClient(timeout=20) as client:
+                # Step 1: resolve file_id to a download path
+                finfo_resp = await client.get(
+                    f"https://api.telegram.org/bot{bot_token}/getFile",
+                    params={"file_id": file_id},
+                )
+                finfo = finfo_resp.json()
+                file_path_tg = finfo.get("result", {}).get("file_path")
+                if file_path_tg:
+                    # Step 2: download the actual bytes
+                    img_resp = await client.get(
+                        f"https://api.telegram.org/file/bot{bot_token}/{file_path_tg}"
+                    )
+                    if img_resp.status_code == 200:
+                        # Save to agent workspace uploads dir
+                        from pathlib import Path
+                        from app.config import get_settings
+                        from app.models.channel_config import ChannelConfig
+                        from sqlalchemy import select
+                        from app.database import async_session
+                        settings = get_settings()
+                        upload_dir = (
+                            Path(settings.AGENT_DATA_DIR) / str(agent_id) / "workspace" / "uploads"
+                        )
+                        upload_dir.mkdir(parents=True, exist_ok=True)
+                        ext = file_path_tg.rsplit(".", 1)[-1] if "." in file_path_tg else "jpg"
+                        fname = f"tg_{file_id[-8:]}.{ext}"
+                        save_path = upload_dir / fname
+                        save_path.write_bytes(img_resp.content)
+                        image_path = f"workspace/uploads/{fname}"
+                        logger.info(f"[TelegramPoller] Saved photo to {save_path}")
+        except Exception as e:
+            logger.warning(f"[TelegramPoller] Failed to download photo: {e}")
+
+        # If only a photo (no caption), use a default prompt
+        user_text = caption or (f"[Image sent via Telegram, saved at {image_path}]" if image_path else "[Photo]")
+    else:
+        user_text = text
+
+    if not user_text and not image_path:
+        return
 
     # Reuse the existing processing logic from telegram_bot.py
     from app.api.telegram_bot import _process_telegram_message
-    await _process_telegram_message(agent_id, sender_id, display_name, conv_id, text, chat_id)
+    await _process_telegram_message(
+        agent_id, sender_id, display_name, conv_id, user_text, chat_id,
+        image_path=image_path,
+    )
+

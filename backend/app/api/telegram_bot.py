@@ -187,7 +187,11 @@ async def telegram_webhook(
     return Response(status_code=200)
 
 
-async def _process_telegram_message(agent_id: uuid.UUID, sender_id: int, display_name: str, conv_id: str, user_text: str, chat_id: int):
+async def _process_telegram_message(
+    agent_id: uuid.UUID, sender_id: int, display_name: str,
+    conv_id: str, user_text: str, chat_id: int,
+    image_path: str | None = None,
+):
     """Background task to call LLM and send reply to Telegram."""
     from app.models.audit import ChatMessage
     from app.models.agent import Agent as AgentModel
@@ -266,6 +270,20 @@ async def _process_telegram_message(agent_id: uuid.UUID, sender_id: int, display
         sess.last_message_at = datetime.now(timezone.utc)
         await bg_db.commit()
 
+        # Build LLM prompt — inject Telegram channel context so the agent
+        # knows it is in a Telegram conversation, not on the web UI.
+        llm_text = (
+            f"[System: You are responding via Telegram to user '{display_name}'. "
+            f"Keep replies concise and Telegram-friendly. "
+            f"You may use *bold*, _italic_, and `code` Markdown.]\n"
+            f"{user_text}"
+        )
+        if image_path:
+            llm_text += (
+                f"\n\n[System: The user sent an image saved at workspace path `{image_path}`. "
+                f"Please call read_document or list_files to inspect it if needed.]"
+            )
+
         # Mark thinking (Typing action in Telegram)
         tg_action_url = f"https://api.telegram.org/bot{bot_token}/sendChatAction"
         try:
@@ -276,9 +294,9 @@ async def _process_telegram_message(agent_id: uuid.UUID, sender_id: int, display
 
         # Call LLM — use a fresh session to avoid conflicts with call_llm's internal sessions
         from app.database import async_session as _async_session
-        logger.info(f"[Telegram] Calling LLM for agent {agent_id}, user_text={user_text[:60]!r}, history_len={len(history)}")
+        logger.info(f"[Telegram] Calling LLM for agent {agent_id}, user_text={llm_text[:60]!r}, history_len={len(history)}")
         async with _async_session() as llm_db:
-            reply_text = await _call_agent_llm(llm_db, agent_id, user_text, history=history, user_id=platform_user_id)
+            reply_text = await _call_agent_llm(llm_db, agent_id, llm_text, history=history, user_id=platform_user_id)
         logger.info(f"[Telegram] LLM reply ({len(reply_text)} chars): {reply_text[:100]!r}")
         if not reply_text or reply_text == "[LLM returned empty content]":
             # Retry once without history in case history was the problem
