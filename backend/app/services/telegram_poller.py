@@ -149,12 +149,13 @@ async def _handle_update(agent_id: uuid.UUID, bot_token: str, update: dict) -> N
 
     # ── Photo handling ────────────────────────────────────────────────────────
     if photos:
-        # Pick the highest-resolution version
+        # Pick the highest-resolution version (Telegram sends multiple sizes)
         best = max(photos, key=lambda p: p.get("file_size", 0))
         file_id = best.get("file_id")
+        img_bytes: bytes | None = None
         try:
             async with httpx.AsyncClient(timeout=20) as client:
-                # Step 1: resolve file_id to a download path
+                # Step 1: resolve file_id → download path
                 finfo_resp = await client.get(
                     f"https://api.telegram.org/bot{bot_token}/getFile",
                     params={"file_id": file_id},
@@ -162,17 +163,13 @@ async def _handle_update(agent_id: uuid.UUID, bot_token: str, update: dict) -> N
                 finfo = finfo_resp.json()
                 file_path_tg = finfo.get("result", {}).get("file_path")
                 if file_path_tg:
-                    # Step 2: download the actual bytes
                     img_resp = await client.get(
                         f"https://api.telegram.org/file/bot{bot_token}/{file_path_tg}"
                     )
                     if img_resp.status_code == 200:
-                        # Save to agent workspace uploads dir
+                        img_bytes = img_resp.content
                         from pathlib import Path
                         from app.config import get_settings
-                        from app.models.channel_config import ChannelConfig
-                        from sqlalchemy import select
-                        from app.database import async_session
                         settings = get_settings()
                         upload_dir = (
                             Path(settings.AGENT_DATA_DIR) / str(agent_id) / "workspace" / "uploads"
@@ -181,14 +178,22 @@ async def _handle_update(agent_id: uuid.UUID, bot_token: str, update: dict) -> N
                         ext = file_path_tg.rsplit(".", 1)[-1] if "." in file_path_tg else "jpg"
                         fname = f"tg_{file_id[-8:]}.{ext}"
                         save_path = upload_dir / fname
-                        save_path.write_bytes(img_resp.content)
+                        save_path.write_bytes(img_bytes)
                         image_path = f"workspace/uploads/{fname}"
-                        logger.info(f"[TelegramPoller] Saved photo to {save_path}")
+                        logger.info(f"[TelegramPoller] Saved photo to {save_path} ({len(img_bytes)} bytes)")
         except Exception as e:
             logger.warning(f"[TelegramPoller] Failed to download photo: {e}")
 
-        # If only a photo (no caption), use a default prompt
-        user_text = caption or (f"[Image sent via Telegram, saved at {image_path}]" if image_path else "[Photo]")
+        # Embed image as base64 marker so vision-capable LLMs can see it.
+        # call_llm in websocket.py automatically converts [image_data:...] to
+        # the OpenAI Vision API format when supports_vision=True.
+        import base64 as _b64
+        if img_bytes:
+            b64 = _b64.b64encode(img_bytes).decode("ascii")
+            image_marker = f"[image_data:data:image/jpeg;base64,{b64}]"
+            user_text = (caption + "\n" if caption else "") + image_marker
+        else:
+            user_text = caption or "[Image received but could not be downloaded]"
     else:
         user_text = text
 
