@@ -215,9 +215,14 @@ class OpenAICompatibleClient(LLMClient):
 
     @property
     def is_ollama(self) -> bool:
-        """Detect if this is an Ollama backend (local or cloud)."""
+        """Detect if this is a LOCAL Ollama backend.
+
+        Local Ollama (port 11434 / localhost) uses a legacy images[] format.
+        Ollama Cloud (api.ollama.com) uses the standard OpenAI vision format,
+        so we must NOT apply the local format conversion there.
+        """
         url = (self.base_url or "").lower()
-        return "ollama" in url or ":11434" in url
+        return ":11434" in url or ("localhost" in url and "11434" in url)
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client."""
