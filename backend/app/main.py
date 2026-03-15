@@ -88,12 +88,15 @@ async def lifespan(app: FastAPI):
         import app.models.gateway_message # noqa
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-            # Add 'atlassian' to channel_type_enum if it doesn't exist yet (idempotent)
-            await conn.execute(
-                __import__("sqlalchemy").text(
-                    "ALTER TYPE channel_type_enum ADD VALUE IF NOT EXISTS 'atlassian'"
-                )
-            )
+            # Idempotently ensure all newer enum values exist (no migration required)
+            import sqlalchemy as _sa
+            for _val in ("atlassian", "microsoft_teams", "telegram"):
+                try:
+                    await conn.execute(_sa.text(
+                        f"ALTER TYPE channel_type_enum ADD VALUE IF NOT EXISTS '{_val}'"
+                    ))
+                except Exception:
+                    pass  # enum value already exists or not a pg enum
         print("[startup] ✅ Database tables ready", flush=True)
     except Exception as e:
         print(f"[startup] ⚠️ create_all failed: {e}", flush=True)
