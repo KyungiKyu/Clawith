@@ -1456,6 +1456,7 @@ function AgentDetailInner() {
     const [teamsOpen, setTeamsOpen] = useState(false);
     const [feishuOpen, setFeishuOpen] = useState(false);
     const [atlassianOpen, setAtlassianOpen] = useState(false);
+    const [telegramOpen, setTelegramOpen] = useState(false);
     // Shared password-field visibility map: key = field id, value = shown/hidden
     const [showPwds, setShowPwds] = useState<Record<string, boolean>>({});
     const togglePwd = (fieldId: string) => setShowPwds(p => ({ ...p, [fieldId]: !p[fieldId] }));
@@ -1476,6 +1477,23 @@ function AgentDetailInner() {
     const deleteDiscord = useMutation({
         mutationFn: () => fetchAuth(`/agents/${id}/discord-channel`, { method: 'DELETE' }),
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['discord-channel', id] }),
+    });
+
+    // ─── Channel config — Telegram ────────────────────────
+    const [telegramForm, setTelegramForm] = useState({ bot_token: '' });
+    const [telegramEditing, setTelegramEditing] = useState(false);
+    const { data: telegramConfig } = useQuery({
+        queryKey: ['telegram-channel', id],
+        queryFn: () => fetchAuth<any>(`/agents/${id}/telegram-channel`).catch(() => null),
+        enabled: !!id && activeTab === 'settings',
+    });
+    const saveTelegram = useMutation({
+        mutationFn: () => fetchAuth(`/agents/${id}/telegram-channel`, { method: 'POST', body: JSON.stringify(telegramForm) }),
+        onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['telegram-channel', id] }); setTelegramForm({ bot_token: '' }); },
+    });
+    const deleteTelegram = useMutation({
+        mutationFn: () => fetchAuth(`/agents/${id}/telegram-channel`, { method: 'DELETE' }),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['telegram-channel', id] }),
     });
 
     // ─── Channel config — Atlassian ──────────────────────
@@ -4267,6 +4285,76 @@ function AgentDetailInner() {
                                                             {saveDiscord.isPending ? t('common.loading') : (discordEditing ? 'Save Changes' : t('agent.settings.channel.saveChannel'))}
                                                         </button>
                                                         {discordEditing && <button className="btn btn-secondary" style={{ fontSize: '12px' }} onClick={() => setDiscordEditing(false)}>Cancel</button>}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>)}
+                                    </div>
+
+                                    {/* Telegram */}
+                                    <div style={{ border: '1px solid var(--border-subtle)', borderRadius: '8px', overflow: 'hidden', marginBottom: '12px' }}>
+                                        <div onClick={() => setTelegramOpen(!telegramOpen)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', cursor: 'pointer', transition: 'background 0.15s' }} onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <svg width="20" height="20" viewBox="0 0 24 24" fill="#0088cc"><path d="M11.944 0A12 12 0 000 12a12 12 0 0012 12 12 12 0 0012-12A12 12 0 0012 0a12 12 0 00-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 01.171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.892-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" /></svg>
+                                                <div>
+                                                    <div style={{ fontWeight: 600, fontSize: '14px' }}>Telegram</div>
+                                                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Bot Messages</div>
+                                                </div>
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                {telegramConfig && <span className={`badge ${telegramConfig.is_configured ? 'badge-success' : 'badge-warning'}`}>{telegramConfig.is_configured ? t('agent.settings.channel.configured') : t('agent.settings.channel.notConfigured')}</span>}
+                                                <span style={{ fontSize: '12px', color: 'var(--text-tertiary)', transition: 'transform 0.2s', transform: telegramOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
+                                            </div>
+                                        </div>
+                                        {telegramOpen && (<div style={{ padding: '0 16px 16px', borderTop: '1px solid var(--border-subtle)' }}>
+                                            {!canManage ? (
+                                                <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', fontStyle: 'italic', padding: '12px', background: 'var(--bg-secondary)', borderRadius: '6px' }}>
+                                                    Only the creator or admin can configure communication channels.
+                                                </div>
+                                            ) : telegramConfig?.is_configured && !telegramEditing ? (
+                                                <div>
+                                                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginBottom: '8px' }}>Connected to Telegram Bot</div>
+                                                    <details style={{ marginBottom: '8px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                                        <summary style={{ cursor: 'pointer', fontWeight: 500, color: 'var(--text-primary)', userSelect: 'none', listStyle: 'none', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            <span style={{ fontSize: '10px' }}>▶</span> {t('channelGuide.setupGuide')}
+                                                        </summary>
+                                                        <ol style={{ paddingLeft: '16px', margin: '8px 0', lineHeight: 1.9 }}>
+                                                            <li>{t('channelGuide.telegram.step1', 'Open BotFather in Telegram')}</li>
+                                                            <li>{t('channelGuide.telegram.step2', 'Create a new bot using /newbot')}</li>
+                                                            <li>{t('channelGuide.telegram.step3', 'Copy the HTTP API Token here')}</li>
+                                                        </ol>
+                                                        <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', background: 'var(--bg-secondary)', padding: '6px 10px', borderRadius: '6px' }}>💡 {t('channelGuide.telegram.note', 'The webhook will be automatically set.')}</div>
+                                                    </details>
+                                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                                        <button className="btn btn-secondary" style={{ fontSize: '12px', padding: '4px 12px' }} onClick={() => { setTelegramForm({ bot_token: telegramConfig?.app_secret || '' }); setTelegramEditing(true); }}>Edit</button>
+                                                        <button className="btn btn-danger" style={{ fontSize: '12px', padding: '4px 12px' }} onClick={() => deleteTelegram.mutate()}>Disconnect</button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                    <div>
+                                                        <label style={{ fontSize: '12px', fontWeight: 500, display: 'block', marginBottom: '4px' }}>Bot Token *</label>
+                                                        <div style={{ position: 'relative' }}>
+                                                            <input className="input" type={showPwds['tele_token'] ? 'text' : 'password'} value={telegramForm.bot_token} onChange={e => setTelegramForm({ ...telegramForm, bot_token: e.target.value })} style={{ fontSize: '12px', paddingRight: '36px', width: '100%' }} placeholder="123456789:ABCdefgGHIJ_klm..." />
+                                                            <button type="button" onClick={() => togglePwd('tele_token')} style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', padding: '2px', display: 'flex', alignItems: 'center' }}>{showPwds['tele_token'] ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /></svg> : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>}</button>
+                                                        </div>
+                                                    </div>
+                                                    <details style={{ marginBottom: '8px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                                        <summary style={{ cursor: 'pointer', fontWeight: 500, color: 'var(--text-primary)', userSelect: 'none', listStyle: 'none', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            <span style={{ fontSize: '10px' }}>▶</span> {t('channelGuide.setupGuide')}
+                                                        </summary>
+                                                        <ol style={{ paddingLeft: '16px', margin: '8px 0', lineHeight: 1.9 }}>
+                                                            <li>{t('channelGuide.telegram.step1', 'Open BotFather in Telegram')}</li>
+                                                            <li>{t('channelGuide.telegram.step2', 'Create a new bot using /newbot')}</li>
+                                                            <li>{t('channelGuide.telegram.step3', 'Copy the HTTP API Token here')}</li>
+                                                        </ol>
+                                                        <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', background: 'var(--bg-secondary)', padding: '6px 10px', borderRadius: '6px' }}>💡 {t('channelGuide.telegram.note', 'The webhook will be automatically set.')}</div>
+                                                    </details>
+                                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                                        <button className="btn btn-primary" style={{ fontSize: '12px', alignSelf: 'flex-start' }} onClick={() => { saveTelegram.mutate(); setTelegramEditing(false); }} disabled={!telegramForm.bot_token || saveTelegram.isPending}>
+                                                            {saveTelegram.isPending ? t('common.loading') : (telegramEditing ? 'Save Changes' : t('agent.settings.channel.saveChannel'))}
+                                                        </button>
+                                                        {telegramEditing && <button className="btn btn-secondary" style={{ fontSize: '12px' }} onClick={() => setTelegramEditing(false)}>Cancel</button>}
                                                     </div>
                                                 </div>
                                             )}
